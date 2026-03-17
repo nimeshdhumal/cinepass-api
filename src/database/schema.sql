@@ -7,7 +7,7 @@ CREATE DATABASE IF NOT EXISTS cinepass_db CHARACTER SET utf8mb4 COLLATE utf8mb4_
 USE cinepass_db;
 
 
-CREATE TABLE roles (
+CREATE TABLE IF NOT EXISTS roles (
   id TINYINT UNSIGNED NOT NULL AUTO_INCREMENT,
   name VARCHAR(30) NOT NULL,
   PRIMARY KEY (id),
@@ -21,7 +21,7 @@ VALUES ('ADMIN'),
   ('CUSTOMER');
 
 
-CREATE TABLE users (
+CREATE TABLE IF NOT EXISTS users (
   id CHAR(36) NOT NULL DEFAULT (UUID()),
   email VARCHAR(100) NOT NULL,
   phone VARCHAR(15) NULL,
@@ -39,7 +39,7 @@ CREATE TABLE users (
 ) ENGINE = InnoDB;
 
 
-CREATE TABLE user_roles (
+CREATE TABLE IF NOT EXISTS user_roles (
   user_id CHAR(36) NOT NULL,
   role_id TINYINT UNSIGNED NOT NULL,
   PRIMARY KEY (user_id, role_id),
@@ -48,7 +48,7 @@ CREATE TABLE user_roles (
 ) ENGINE = InnoDB;
 
 
-CREATE TABLE refresh_tokens (
+CREATE TABLE IF NOT EXISTS refresh_tokens (
   id CHAR(36) NOT NULL DEFAULT (UUID()),
   user_id CHAR(36) NOT NULL,
   token VARCHAR(500) NOT NULL,
@@ -62,7 +62,7 @@ CREATE TABLE refresh_tokens (
 ) ENGINE = InnoDB;
 
 
-CREATE TABLE audit_logs (
+CREATE TABLE IF NOT EXISTS audit_logs (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   user_id CHAR(36) NULL,
   action VARCHAR(100) NOT NULL,
@@ -79,7 +79,7 @@ CREATE TABLE audit_logs (
 ) ENGINE = InnoDB;
 
 
-CREATE TABLE theaters (
+CREATE TABLE IF NOT EXISTS theaters (
   id CHAR(36) NOT NULL DEFAULT (UUID()),
   name VARCHAR(100) NOT NULL,
   address VARCHAR(255) NOT NULL,
@@ -97,7 +97,7 @@ CREATE TABLE theaters (
 ) ENGINE = InnoDB;
 
 
-CREATE TABLE screens (
+CREATE TABLE IF NOT EXISTS screens (
   id CHAR(36) NOT NULL DEFAULT (UUID()),
   theater_id CHAR(36) NOT NULL,
   name VARCHAR(50) NOT NULL,
@@ -112,7 +112,7 @@ CREATE TABLE screens (
 ) ENGINE = InnoDB;
 
 
-CREATE TABLE seat_types(
+CREATE TABLE IF NOT EXISTS seat_types(
   id TINYINT UNSIGNED NOT NULL AUTO_INCREMENT,
   name VARCHAR(20) NOT NULL UNIQUE,
   description VARCHAR(100) NULL,
@@ -136,7 +136,7 @@ VALUES ('SILVER', 'Standard seating with basic comfort'),
   );
 
 
-CREATE TABLE seats(
+CREATE TABLE IF NOT EXISTS seats(
   id CHAR(36) NOT NULL DEFAULT (UUID()),
   screen_id CHAR(36) NOT NULL,
   seat_type_id TINYINT UNSIGNED NOT NULL,
@@ -151,7 +151,7 @@ CREATE TABLE seats(
 ) ENGINE = InnoDB;
 
 
-CREATE TABLE movies(
+CREATE TABLE IF NOT EXISTS movies(
   id CHAR(36) NOT NULL DEFAULT (UUID()),
   title VARCHAR(150) NOT NULL,
   description TEXT NULL,
@@ -171,14 +171,14 @@ CREATE TABLE movies(
 ) ENGINE = InnoDB;
 
 
-CREATE TABLE genres(
+CREATE TABLE IF NOT EXISTS genres(
   id TINYINT UNSIGNED NOT NULL AUTO_INCREMENT,
   name VARCHAR(30) NOT NULL UNIQUE,
   PRIMARY KEY(id)
 ) ENGINE = InnoDB;
 
 
-CREATE TABLE movie_genres(
+CREATE TABLE IF NOT EXISTS movie_genres(
   movie_id CHAR(36) NOT NULL,
   genre_id TINYINT UNSIGNED NOT NULL,
   PRIMARY KEY (movie_id, genre_id),
@@ -187,7 +187,7 @@ CREATE TABLE movie_genres(
 ) ENGINE = InnoDB;
 
 
-CREATE TABLE languages(
+CREATE TABLE IF NOT EXISTS languages(
   id TINYINT UNSIGNED NOT NULL AUTO_INCREMENT,
   name VARCHAR(30) NOT NULL,
   code CHAR(2) NOT NULL UNIQUE,
@@ -195,14 +195,14 @@ CREATE TABLE languages(
 ) ENGINE = InnoDB;
 
 
-CREATE TABLE formats(
+CREATE TABLE IF NOT EXISTS formats(
   id TINYINT UNSIGNED NOT NULL AUTO_INCREMENT,
   name VARCHAR(20) NOT NULL UNIQUE,
   PRIMARY KEY(id)
 ) ENGINE = InnoDB;
 
 
-CREATE TABLE casts(
+CREATE TABLE IF NOT EXISTS casts(
   id CHAR(36) NOT NULL DEFAULT (UUID()),
   name VARCHAR(100) NOT NULL,
   photo_url VARCHAR(500) NULL,
@@ -212,7 +212,7 @@ CREATE TABLE casts(
 ) ENGINE = InnoDB;
 
 
-CREATE TABLE movie_casts(
+CREATE TABLE IF NOT EXISTS movie_casts(
   movie_id CHAR(36) NOT NULL,
   cast_id CHAR(36) NOT NULL,
   character_name VARCHAR(100) NULL,
@@ -238,3 +238,89 @@ VALUES('2D'),
 ('IMAX'),
 ('Dolby Atmos'),
   ('4DX');
+
+
+CREATE TABLE IF NOT EXISTS shows(
+  id CHAR(36) NOT NULL DEFAULT (UUID()),
+  movie_id CHAR(36) NOT NULL,
+  screen_id CHAR(36) NOT NULL,
+  language_id TINYINT UNSIGNED NOT NULL,
+  format_id TINYINT UNSIGNED NOT NULL,
+  show_date DATE NOT NULL,
+  start_time TIME NOT NULL,
+  end_time TIME NOT NULL,
+  status ENUM('SCHEDULED','ACTIVE','CANCELLED','COMPLETED') NOT NULL DEFAULT 'SCHEDULED',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY(id),
+  KEY idx_shows_movie_id (movie_id),
+  KEY idx_shows_screen_id (screen_id),
+  KEY idx_shows_date (show_date, status),
+  UNIQUE KEY uq_shows_screen_time (screen_id, show_date, start_time),
+  CONSTRAINT fk_shows_movie FOREIGN KEY (movie_id) REFERENCES movies(id) ON DELETE CASCADE,
+  CONSTRAINT fk_shows_screen FOREIGN KEY (screen_id) REFERENCES screens(id) ON DELETE CASCADE,
+  CONSTRAINT fk_shows_language FOREIGN KEY (language_id) REFERENCES languages(id) ON DELETE CASCADE,
+  CONSTRAINT fk_shows_format FOREIGN KEY (format_id) REFERENCES formats(id) ON DELETE CASCADE
+) ENGINE = InnoDB;
+
+
+CREATE TABLE IF NOT EXISTS show_seats(
+  id CHAR(36) NOT NULL DEFAULT (UUID()),
+  show_id CHAR(36) NOT NULL,
+  seat_id CHAR(36) NOT NULL,
+  status ENUM('AVAILABLE','LOCKED','BOOKED') NOT NULL DEFAULT 'AVAILABLE',
+  price DECIMAL(8,2) NOT NULL,
+  PRIMARY KEY(id),
+  KEY idx_ss_show_status (show_id,status),
+  UNIQUE KEY uq_ss_show_seat (show_id, seat_id),
+  CONSTRAINT fk_ss_shows FOREIGN KEY (show_id) REFERENCES shows(id) ON DELETE CASCADE,
+  CONSTRAINT fk_ss_seats FOREIGN KEY (seat_id) REFERENCES seats(id) ON DELETE CASCADE
+) ENGINE = InnoDB;
+
+
+CREATE TABLE IF NOT EXISTS pricing_tiers(
+  id CHAR(36) NOT NULL DEFAULT (UUID()),
+  show_id CHAR(36) NOT NULL,
+  seat_type_id TINYINT UNSIGNED NOT NULL,
+  price DECIMAL(8,2) NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY(id),
+  UNIQUE KEY uq_pt_show_seat_type (show_id, seat_type_id),
+  CONSTRAINT fk_pt_show FOREIGN KEY (show_id) REFERENCES shows(id) ON DELETE CASCADE,
+  CONSTRAINT fk_pt_seat_type FOREIGN KEY (seat_type_id) REFERENCES seat_types(id) ON DELETE CASCADE
+) ENGINE = InnoDB;
+
+
+CREATE TABLE IF NOT EXISTS offers(
+  id CHAR(36) NOT NULL DEFAULT (UUID()),
+  code VARCHAR(20) NOT NULL UNIQUE,
+  description VARCHAR(255) NULL,
+  discount_type ENUM('PERCENTAGE','FLAT') NOT NULL,
+  discount_value DECIMAL(8,2) NOT NULL,
+  min_amount DECIMAL(8,2) NOT NULL DEFAULT 0.00,
+  max_uses INT UNSIGNED NULL,
+  used_count INT UNSIGNED NOT NULL DEFAULT 0,
+  valid_from DATETIME NOT NULL,
+  valid_until DATETIME NOT NULL,
+  is_active TINYINT(1) NOT NULL DEFAULT 1,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY(id),
+  UNIQUE KEY uq_offers_code (code)
+) ENGINE = InnoDB;
+
+
+CREATE TABLE IF NOT EXISTS schedules(
+  id CHAR(36) NOT NULL DEFAULT (UUID()),
+  screen_id CHAR(36) NOT NULL,
+  movie_id CHAR(36) NOT NULL,
+  start_date DATE NOT NULL,
+  end_date DATE NOT NULL,
+  show_times JSON NOT NULL,
+  is_active TINYINT(1) NOT NULL DEFAULT 1,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY(id),
+  KEY idx_schedules_screen (screen_id),
+  KEY idx_schedules_movie(movie_id),
+  CONSTRAINT fk_sch_screen FOREIGN KEY (screen_id) REFERENCES screens(id) ON DELETE CASCADE,
+  CONSTRAINT fk_sch_movie FOREIGN KEY (movie_id) REFERENCES movies(id) ON DELETE CASCADE
+) ENGINE = InnoDB;
