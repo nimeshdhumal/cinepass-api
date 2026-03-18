@@ -259,8 +259,8 @@ CREATE TABLE IF NOT EXISTS shows(
   UNIQUE KEY uq_shows_screen_time (screen_id, show_date, start_time),
   CONSTRAINT fk_shows_movie FOREIGN KEY (movie_id) REFERENCES movies(id) ON DELETE CASCADE,
   CONSTRAINT fk_shows_screen FOREIGN KEY (screen_id) REFERENCES screens(id) ON DELETE CASCADE,
-  CONSTRAINT fk_shows_language FOREIGN KEY (language_id) REFERENCES languages(id) ON DELETE CASCADE,
-  CONSTRAINT fk_shows_format FOREIGN KEY (format_id) REFERENCES formats(id) ON DELETE CASCADE
+  CONSTRAINT fk_shows_language FOREIGN KEY (language_id) REFERENCES languages(id) ON DELETE RESTRICT,
+  CONSTRAINT fk_shows_format FOREIGN KEY (format_id) REFERENCES formats(id) ON DELETE RESTRICT 
 ) ENGINE = InnoDB;
 
 
@@ -326,13 +326,6 @@ CREATE TABLE IF NOT EXISTS schedules(
   CONSTRAINT fk_sch_screen FOREIGN KEY (screen_id) REFERENCES screens(id) ON DELETE CASCADE,
   CONSTRAINT fk_sch_movie FOREIGN KEY (movie_id) REFERENCES movies(id) ON DELETE CASCADE
 ) ENGINE = InnoDB;
-
---Please execute this query in personal laptop also then after remove it.
--- ALTER TABLE pricing_tiers
--- ADD KEY idx_pt_show_id (show_id);
-
--- ALTER TABLE offers
--- ADD KEY idx_offers_validity (valid_from, valid_until);
 
 CREATE TABLE IF NOT EXISTS bookings(
   id CHAR(36) NOT NULL DEFAULT (UUID()),
@@ -406,8 +399,8 @@ CREATE TABLE IF NOT EXISTS qr_tokens(
   id CHAR(36) NOT NULL DEFAULT (UUID()),
   ticket_id CHAR(36) NOT NULL,
   token VARCHAR(255) NOT NULL UNIQUE,
-  is_used TINYINT(1) NOT NULL DEFAULT 0,
   expires_at DATETIME NOT NULL,
+  is_used TINYINT(1) NOT NULL DEFAULT 0,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY(id),
   KEY idx_qt_ticket_id (ticket_id),
@@ -526,20 +519,21 @@ CREATE TABLE IF NOT EXISTS loyalty_points(
   user_id CHAR(36) NOT NULL,
   booking_id CHAR(36) NULL,
   points INT NOT NULL,
-  type ENUM('EARNED','REDEEMED','EXPIRED'),
+  type ENUM('EARNED','REDEEMED','EXPIRED') NOT NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY(id),
   KEY idx_lp_user_id (user_id),
-  CONSTRAINT fk_loyal_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  CONSTRAINT fk_loyal_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  CONSTRAINT fk_loyal_booking FOREIGN KEY (booking_id) REFERENCES bookings(id) ON DELETE SET NULL
 ) ENGINE = InnoDB;
 
 
 CREATE TABLE IF NOT EXISTS configurations(
   id TINYINT UNSIGNED NOT NULL AUTO_INCREMENT,
-  key VARCHAR(50) NOT NULL UNIQUE,
-  value TEXT NOT NULL,
+  `key` VARCHAR(50) NOT NULL UNIQUE,
+  `value` TEXT NOT NULL,
   description VARCHAR(255) NULL,
-  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY(id)
 ) ENGINE = InnoDB;
 
@@ -554,19 +548,20 @@ CREATE TABLE IF NOT EXISTS food_items(
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY(id),
   KEY idx_fi_theater_id (theater_id),
-  CONSTRAINT fk_fI_theater FOREIGN KEY (theater_id) REFERENCES theaters(id) ON DELETE CASCADE
+  CONSTRAINT fk_fi_theater FOREIGN KEY (theater_id) REFERENCES theaters(id) ON DELETE CASCADE
 ) ENGINE = InnoDB;
 
 
 CREATE TABLE IF NOT EXISTS food_orders(
-  id CHAR(36) NOT NULL DEFAULT (UUID()),
-  booking_id CHAR(36) NOT NULL,
-  food_item_id CHAR(36) NOT NULL,
-  quantity TINYINT UNSIGNED NOT NULL DEFAULT 1,
-  unit_price DECIMAL(8,2) NOT NULL,
-  total_price DECIMAL(8,2) NOT NULL,
-  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  id           CHAR(36)         NOT NULL DEFAULT (UUID()),
+  booking_id   CHAR(36)         NOT NULL,
+  food_item_id CHAR(36)         NOT NULL,
+  quantity     TINYINT UNSIGNED NOT NULL DEFAULT 1,
+  unit_price   DECIMAL(8,2)     NOT NULL,
+  total_price  DECIMAL(8,2)     NOT NULL,
+  created_at   DATETIME         NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY(id),
   KEY idx_fo_booking_id (booking_id),
-  CONSTRAINT fk_fo_ FOREIGN KEY (theater_id) REFERENCES theaters(id) ON DELETE CASCADE
+  CONSTRAINT fk_fo_booking FOREIGN KEY (booking_id) REFERENCES bookings(id) ON DELETE CASCADE,
+  CONSTRAINT fk_fo_food_item FOREIGN KEY (food_item_id) REFERENCES food_items(id) ON DELETE CASCADE
 ) ENGINE = InnoDB;
