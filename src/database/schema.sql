@@ -286,6 +286,7 @@ CREATE TABLE IF NOT EXISTS pricing_tiers(
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY(id),
   UNIQUE KEY uq_pt_show_seat_type (show_id, seat_type_id),
+  KEY idx_pt_show_id (show_id),
   CONSTRAINT fk_pt_show FOREIGN KEY (show_id) REFERENCES shows(id) ON DELETE CASCADE,
   CONSTRAINT fk_pt_seat_type FOREIGN KEY (seat_type_id) REFERENCES seat_types(id) ON DELETE CASCADE
 ) ENGINE = InnoDB;
@@ -293,7 +294,7 @@ CREATE TABLE IF NOT EXISTS pricing_tiers(
 
 CREATE TABLE IF NOT EXISTS offers(
   id CHAR(36) NOT NULL DEFAULT (UUID()),
-  code VARCHAR(20) NOT NULL UNIQUE,
+  code VARCHAR(20) NOT NULL,
   description VARCHAR(255) NULL,
   discount_type ENUM('PERCENTAGE','FLAT') NOT NULL,
   discount_value DECIMAL(8,2) NOT NULL,
@@ -305,6 +306,7 @@ CREATE TABLE IF NOT EXISTS offers(
   is_active TINYINT(1) NOT NULL DEFAULT 1,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY(id),
+  KEY idx_offers_validity (valid_from, valid_until),
   UNIQUE KEY uq_offers_code (code)
 ) ENGINE = InnoDB;
 
@@ -323,4 +325,248 @@ CREATE TABLE IF NOT EXISTS schedules(
   KEY idx_schedules_movie(movie_id),
   CONSTRAINT fk_sch_screen FOREIGN KEY (screen_id) REFERENCES screens(id) ON DELETE CASCADE,
   CONSTRAINT fk_sch_movie FOREIGN KEY (movie_id) REFERENCES movies(id) ON DELETE CASCADE
+) ENGINE = InnoDB;
+
+--Please execute this query in personal laptop also then after remove it.
+-- ALTER TABLE pricing_tiers
+-- ADD KEY idx_pt_show_id (show_id);
+
+-- ALTER TABLE offers
+-- ADD KEY idx_offers_validity (valid_from, valid_until);
+
+CREATE TABLE IF NOT EXISTS bookings(
+  id CHAR(36) NOT NULL DEFAULT (UUID()),
+  user_id CHAR(36) NOT NULL,
+  show_id CHAR(36) NOT NULL,
+  booking_ref VARCHAR(20) NOT NULL UNIQUE,
+  status ENUM('PENDING','CONFIRMED','CANCELLED','REFUNDED') NOT NULL DEFAULT 'PENDING',
+  total_amount DECIMAL(10,2) NOT NULL,
+  discount_amount DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+  final_amount DECIMAL(10,2) NOT NULL,
+  offer_id CHAR(36) NULL,
+  expires_at DATETIME NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY(id),
+  KEY idx_bookings_user_status (user_id,status),
+  KEY idx_bookings_show_id (show_id),
+  KEY idx_bookings_expires_at (expires_at),
+  CONSTRAINT fk_booking_users FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  CONSTRAINT fk_booking_shows FOREIGN KEY (show_id) REFERENCES shows(id) ON DELETE CASCADE,
+  CONSTRAINT fk_booking_offers FOREIGN KEY (offer_id) REFERENCES offers(id) ON DELETE SET NULL
+) ENGINE = InnoDB;
+
+
+CREATE TABLE IF NOT EXISTS booking_seats(
+  id CHAR(36) NOT NULL DEFAULT (UUID()),
+  booking_id CHAR(36) NOT NULL,
+  show_seat_id CHAR(36) NOT NULL,
+  price DECIMAL(8,2) NOT NULL,
+  PRIMARY KEY(id),
+  KEY idx_bs_booking_id(booking_id),
+  UNIQUE KEY uq_bs_show_seat (show_seat_id),
+  CONSTRAINT fk_bs_booking FOREIGN KEY (booking_id) REFERENCES bookings(id) ON DELETE CASCADE,
+  CONSTRAINT fk_bs_show_seat FOREIGN KEY (show_seat_id) REFERENCES show_seats(id)  ON DELETE CASCADE
+) ENGINE = InnoDB;
+
+
+CREATE TABLE IF NOT EXISTS seat_locks(
+  id CHAR(36) NOT NULL DEFAULT (UUID()),
+  show_seat_id CHAR(36) NOT NULL,
+  user_id CHAR(36) NOT NULL,
+  session_token VARCHAR(100) NOT NULL UNIQUE,
+  expires_at DATETIME NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY(id),
+  KEY idx_sl_show_seat_id (show_seat_id),
+  KEY idx_sl_expires_at (expires_at),
+  KEY idx_sl_user_id (user_id),
+  CONSTRAINT fk_sl_show_seat FOREIGN KEY (show_seat_id) REFERENCES show_seats(id) ON DELETE CASCADE,
+  CONSTRAINT fk_sl_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE = InnoDB;
+
+
+CREATE TABLE IF NOT EXISTS tickets(
+  id CHAR(36) NOT NULL DEFAULT (UUID()),
+  booking_id CHAR(36) NOT NULL,
+  booking_seat_id CHAR(36) NOT NULL,
+  ticket_number VARCHAR(20) NOT NULL UNIQUE,
+  qr_code TEXT NOT NULL,
+  is_used TINYINT(1) NOT NULL DEFAULT 0,
+  used_at DATETIME NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY(id),
+  KEY idx_tickets_booking_id (booking_id),
+  CONSTRAINT fk_tickets_booking FOREIGN KEY (booking_id) REFERENCES bookings(id) ON DELETE CASCADE,
+  CONSTRAINT fk_tickets_booking_seat FOREIGN KEY (booking_seat_id) REFERENCES booking_seats(id) ON DELETE CASCADE
+) ENGINE = InnoDB;
+
+
+CREATE TABLE IF NOT EXISTS qr_tokens(
+  id CHAR(36) NOT NULL DEFAULT (UUID()),
+  ticket_id CHAR(36) NOT NULL,
+  token VARCHAR(255) NOT NULL UNIQUE,
+  is_used TINYINT(1) NOT NULL DEFAULT 0,
+  expires_at DATETIME NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY(id),
+  KEY idx_qt_ticket_id (ticket_id),
+  CONSTRAINT fk_qt_ticket FOREIGN KEY (ticket_id) REFERENCES tickets(id) ON DELETE CASCADE
+) ENGINE = InnoDB;
+
+
+CREATE TABLE IF NOT EXISTS payments(
+  id CHAR(36) NOT NULL DEFAULT (UUID()),
+  booking_id CHAR(36) NOT NULL,
+  gateway ENUM('RAZORPAY','STRIPE','CASH') NOT NULL,
+  gateway_order_id VARCHAR(100) NULL,
+  gateway_payment_id VARCHAR(100) NULL UNIQUE,
+  gateway_signature VARCHAR(255) NULL,
+  amount DECIMAL(10,2) NOT NULL,
+  currency CHAR(3) NOT NULL DEFAULT 'INR',
+  status ENUM('PENDING','SUCCESS','FAILED','REFUNDED') NOT NULL DEFAULT 'PENDING',
+  paid_at DATETIME NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY(id),
+  KEY idx_payments_booking_id (booking_id),
+  KEY idx_payments_status (status),
+  KEY idx_payments_gateway_order (gateway_order_id),
+  CONSTRAINT fk_payments_booking FOREIGN KEY (booking_id) REFERENCES bookings(id) ON DELETE CASCADE
+) ENGINE = InnoDB;
+
+
+CREATE TABLE IF NOT EXISTS payment_logs(
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  payment_id CHAR(36) NOT NULL,
+  event VARCHAR(100) NOT NULL,
+  payload JSON NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY(id),
+  KEY idx_pl_payment_id (payment_id),
+  CONSTRAINT fk_pl_payment FOREIGN KEY (payment_id) REFERENCES payments(id) ON DELETE CASCADE
+) ENGINE = InnoDB;
+
+
+CREATE TABLE IF NOT EXISTS refunds(
+  id CHAR(36) NOT NULL DEFAULT (UUID()),
+  payment_id CHAR(36) NOT NULL,
+  booking_id CHAR(36) NOT NULL,
+  amount DECIMAL(10,2) NOT NULL,
+  reason VARCHAR(255) NULL,
+  status ENUM('PENDING','PROCESSED','FAILED') NOT NULL DEFAULT 'PENDING',
+  gateway_refund_id VARCHAR(100) NULL UNIQUE,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY(id),
+  KEY idx_refunds_booking_id (booking_id),
+  CONSTRAINT fk_refunds_payment FOREIGN KEY (payment_id) REFERENCES payments(id) ON DELETE CASCADE,
+  CONSTRAINT fk_refunds_booking FOREIGN KEY (booking_id) REFERENCES bookings(id) ON DELETE CASCADE
+) ENGINE = InnoDB;
+
+
+CREATE TABLE IF NOT EXISTS refund_items(
+  id CHAR(36) NOT NULL DEFAULT (UUID()),
+  refund_id CHAR(36) NOT NULL,
+  booking_seat_id CHAR(36) NOT NULL,
+  amount DECIMAL(8,2) NOT NULL,
+  PRIMARY KEY(id),
+  KEY idx_ri_refund_id (refund_id),
+  CONSTRAINT fk_ri_refund FOREIGN KEY (refund_id) REFERENCES refunds(id) ON DELETE CASCADE,
+  CONSTRAINT fk_ri_booking_seat FOREIGN KEY (booking_seat_id) REFERENCES booking_seats(id) ON DELETE CASCADE
+) ENGINE = InnoDB;
+
+
+CREATE TABLE IF NOT EXISTS payment_methods(
+  id CHAR(36) NOT NULL DEFAULT (UUID()),
+  user_id CHAR(36) NOT NULL,
+  type ENUM('CARD','UPI','NETBANKING','WALLET') NOT NULL,
+  provider VARCHAR(50) NULL,
+  last_four CHAR(4) NULL,
+  is_default TINYINT(1) NOT NULL DEFAULT 0,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY(id),
+  KEY idx_pm_user_id(user_id),
+  CONSTRAINT fk_pm_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE = InnoDB;
+
+
+CREATE TABLE IF NOT EXISTS reviews(
+  id CHAR(36) NOT NULL DEFAULT (UUID()),
+  user_id CHAR(36) NOT NULL,
+  movie_id CHAR(36) NOT NULL,
+  rating TINYINT UNSIGNED NOT NULL,
+  comment TEXT NULL,
+  is_approved TINYINT(1) NOT NULL DEFAULT 0,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY(id),
+  KEY idx_reviews_movie_id (movie_id),
+  UNIQUE KEY uq_reviews_user_movie (user_id, movie_id),
+  CONSTRAINT fk_reviews_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  CONSTRAINT fk_reviews_movie FOREIGN KEY (movie_id) REFERENCES movies(id) ON DELETE CASCADE
+) ENGINE = InnoDB;
+
+
+CREATE TABLE IF NOT EXISTS notifications(
+  id CHAR(36) NOT NULL DEFAULT (UUID()),
+  user_id CHAR(36) NOT NULL,
+  type ENUM('EMAIL','SMS','PUSH') NOT NULL,
+  title VARCHAR(100) NOT NULL,
+  message TEXT NOT NULL,
+  is_read TINYINT(1) NOT NULL DEFAULT 0,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY(id),
+  KEY idx_notif_user_id (user_id),
+  CONSTRAINT fk_notif_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE = InnoDB;
+
+
+CREATE TABLE IF NOT EXISTS loyalty_points(
+  id CHAR(36) NOT NULL DEFAULT (UUID()),
+  user_id CHAR(36) NOT NULL,
+  booking_id CHAR(36) NULL,
+  points INT NOT NULL,
+  type ENUM('EARNED','REDEEMED','EXPIRED'),
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY(id),
+  KEY idx_lp_user_id (user_id),
+  CONSTRAINT fk_loyal_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE = InnoDB;
+
+
+CREATE TABLE IF NOT EXISTS configurations(
+  id TINYINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  key VARCHAR(50) NOT NULL UNIQUE,
+  value TEXT NOT NULL,
+  description VARCHAR(255) NULL,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE,
+  PRIMARY KEY(id)
+) ENGINE = InnoDB;
+
+
+CREATE TABLE IF NOT EXISTS food_items(
+  id CHAR(36) NOT NULL DEFAULT (UUID()),
+  theater_id CHAR(36) NOT NULL,
+  name VARCHAR(100) NOT NULL,
+  price DECIMAL(8,2) NOT NULL,
+  category ENUM('SNACK','BEVERAGE','COMBO','MEAL') NOT NULL,
+  is_available TINYINT(1) NOT NULL DEFAULT 1,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY(id),
+  KEY idx_fi_theater_id (theater_id),
+  CONSTRAINT fk_fI_theater FOREIGN KEY (theater_id) REFERENCES theaters(id) ON DELETE CASCADE
+) ENGINE = InnoDB;
+
+
+CREATE TABLE IF NOT EXISTS food_orders(
+  id CHAR(36) NOT NULL DEFAULT (UUID()),
+  booking_id CHAR(36) NOT NULL,
+  food_item_id CHAR(36) NOT NULL,
+  quantity TINYINT UNSIGNED NOT NULL DEFAULT 1,
+  unit_price DECIMAL(8,2) NOT NULL,
+  total_price DECIMAL(8,2) NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY(id),
+  KEY idx_fo_booking_id (booking_id),
+  CONSTRAINT fk_fo_ FOREIGN KEY (theater_id) REFERENCES theaters(id) ON DELETE CASCADE
 ) ENGINE = InnoDB;
